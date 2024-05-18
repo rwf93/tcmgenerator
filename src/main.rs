@@ -1,10 +1,11 @@
 mod tcdistributions;
 
-use std::{path::PathBuf, fs};
+use std::{fs, path::PathBuf, sync::Arc};
 use anyhow::Context;
-use tokio::process::Command;
+use tokio::{process::Command, sync::Semaphore};
 use glob::glob;
 use rand::Rng;
+
 use tcdistributions::CASSETTE_DISTRIBUTIONS;
 
 use clap::Parser;
@@ -12,15 +13,15 @@ use clio::ClioPath;
 
 extern crate num_cpus;
 
-
-
 #[derive(Parser, Debug)]
-#[command(author = "rwf93", version = "1.0.0", about = "TCM Generator", long_about = None)]
+#[command(author = "rwf93", version = "1.1.0", about = "TCM Generator", long_about = "Converts mp3 files to ogg and generates cassets for TCBoombox.")]
 struct Arguments {
     #[arg(short, long, help = "ID appended to the generated files (required by TCBoombox/PZ to be unique, don't ask me).")]
     id: String,
-    #[arg(short = 'f', long, help = "Folder where your music files are.",  value_parser = clap::value_parser!(ClioPath).exists().is_dir())]
+    #[arg(short = 'f', long, help = "Folder where your music files are.", value_parser = clap::value_parser!(ClioPath).exists().is_dir())]
     input_folder: ClioPath,
+    #[arg(short = 'j', long, help = "Max amount of ffmpeg tasks to spawn.", default_value_t = num_cpus::get() - 1)]
+    max_jobs: usize,
 }
 
 #[tokio::main]
@@ -36,6 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let unit = "Cassette";
     let mut rng = rand::thread_rng();
 
+    let semaphore = Arc::new(Semaphore::new(args.max_jobs));
     let mut task_pool = Vec::new();
 
     fs::create_dir_all("./playlist/media/scripts")?;
@@ -93,7 +95,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
             if input_path.extension().unwrap() == "mp3" && !output_path.exists() {
                 println!("Converting: {}", input_path.display());
+                let semaphore = semaphore.clone();
                 let task = tokio::spawn(async move {
+                    let permit = semaphore.acquire().await.unwrap();
+
                     Command::new("ffmpeg")
                         .args(&["-y", "-hide_banner", "-loglevel", "error"])
                         .args(&["-i", input_path.into_os_string().into_string().unwrap().as_str()])
@@ -102,7 +107,9 @@ async fn main() -> Result<(), anyhow::Error> {
                         .args(&["-map", "0:a"]) // strip metadata...
                         .arg(output_path.into_os_string().into_string().unwrap())
                         .output().await.unwrap();
-                    });
+
+                    drop(permit);
+                });
 
                 task_pool.push(task);
             }

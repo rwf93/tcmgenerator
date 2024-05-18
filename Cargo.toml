@@ -1,6 +1,6 @@
 [package]
 name = "tcmgenerator"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 
 [dependencies]
@@ -9,7 +9,8 @@ clap = { version = "4.4.11", features = ["derive"] }
 clio = { version = "0.3.5", features = ["clap", "clap-parse"] }
 glob = "0.3.1"
 lazy_static = "1.4.0"
+num_cpus = "1.16.0"
 rand = "0.8.5"
-tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread", "process"] }
+tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread", "process", "sync"] }
 unidecode = "0.3.0"
 uuid = { version = "1.6.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
